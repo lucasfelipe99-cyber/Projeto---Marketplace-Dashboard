@@ -1,0 +1,2674 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marketplace Dashboard</title>
+
+  <!--
+    SheetJS/xlsx é a biblioteca usada para ler arquivos Excel diretamente no navegador.
+    O projeto não usa backend: o arquivo é lido somente na máquina do usuário.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    /*
+      Estilos gerais da página.
+      A ideia é criar uma interface simples, limpa e parecida com uma ferramenta de análise.
+    */
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --page-bg: #0b1120;
+      --surface: #121a2b;
+      --surface-strong: #172338;
+      --surface-soft: #1b2940;
+      --surface-muted: #24344f;
+      --border: #2b3b55;
+      --border-strong: #3f5578;
+      --text: #e5edf7;
+      --text-muted: #9fb0c7;
+      --text-soft: #c3d1e3;
+      --accent: #38bdf8;
+      --accent-strong: #0ea5e9;
+      --accent-deep: #075985;
+      --positive: #4ade80;
+      --negative: #fb7185;
+      --shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(14, 165, 233, 0.16), transparent 34rem),
+        linear-gradient(180deg, #0b1120 0%, #0f172a 52%, #0b1120 100%);
+    }
+
+    /*
+      O container limita a largura do conteúdo e mantém respiro nas laterais.
+    */
+    .page {
+      width: min(1280px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0;
+    }
+
+    /*
+      Cabeçalho principal da aplicação.
+      O título obrigatório da página aparece aqui.
+    */
+    .header {
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.2;
+      color: var(--text);
+    }
+
+    .brand-strip {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 2px;
+      margin-left: auto;
+      align-items: center;
+      flex: 1 1 auto;
+      justify-content: flex-end;
+      min-width: 0;
+    }
+
+    .brand-logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1 1 0;
+      max-width: 350px;
+      min-width: 0;
+      height: 96px;
+      padding: 6px;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .brand-logo img {
+      width: 100%;
+      max-width: 350px;
+      max-height: 92px;
+      object-fit: contain;
+    }
+
+    /*
+      Painel superior com upload.
+    */
+    .top-panel {
+      max-width: 380px;
+      margin-bottom: 18px;
+    }
+
+    .upload-box,
+    .status-box,
+    .table-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .upload-box {
+      padding: 18px;
+    }
+
+    /*
+      O input real fica escondido.
+      O label funciona como botão visual e abre o seletor de arquivos.
+    */
+    .file-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+
+    .upload-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 46px;
+      padding: 12px 16px;
+      border: 1px solid var(--accent-strong);
+      border-radius: 6px;
+      background: var(--accent-strong);
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .upload-button:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #07111f;
+    }
+
+    .upload-help {
+      margin: 12px 0 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    /*
+      Área de status: mostra mensagens antes e depois do upload.
+    */
+    .status-box {
+      min-height: 64px;
+      padding: 16px 18px;
+      margin-bottom: 18px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      align-items: center;
+    }
+
+    .status-message {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .status-message.error {
+      color: var(--negative);
+      font-weight: 700;
+    }
+
+    .stat {
+      display: inline-flex;
+      gap: 6px;
+      align-items: baseline;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .stat strong {
+      color: var(--text);
+    }
+
+    /*
+      Abas principais: uma para a base original filtrada e outra para o dashboard.
+    */
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .tab-button {
+      min-height: 38px;
+      padding: 9px 14px;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text-soft);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .tab-button.active {
+      background: var(--accent-strong);
+      border-color: var(--accent-strong);
+      color: #06101f;
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    /*
+      Layout do dashboard: filtros no topo e visualizações abaixo.
+    */
+    .dashboard {
+      display: grid;
+      gap: 14px;
+    }
+
+    .slicer,
+    .dashboard-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .dashboard-layout {
+      display: grid;
+      grid-template-columns: 260px minmax(520px, 1fr) 260px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .dashboard-main {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .slicer-column {
+      display: grid;
+      gap: 10px;
+    }
+
+    .slicer {
+      min-height: 128px;
+      overflow: hidden;
+    }
+
+    .slicer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 34px;
+      padding: 7px 9px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-strong);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .slicer-clear {
+      border: 0;
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .slicer-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+      max-height: 112px;
+      overflow: auto;
+      padding: 7px;
+    }
+
+    .slicer-options.single-column {
+      grid-template-columns: 1fr;
+    }
+
+    .slicer-option {
+      min-height: 24px;
+      overflow: hidden;
+      border: 1px solid var(--accent-strong);
+      border-radius: 5px;
+      background: var(--accent-deep);
+      color: #ffffff;
+      cursor: pointer;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .slicer-option.off {
+      background: var(--surface-soft);
+      color: var(--text-muted);
+      border-color: var(--border-strong);
+    }
+
+    .slicer-option.marketplace-shopee {
+      background: #ee4d2d;
+      border-color: #ee4d2d;
+      color: #ffffff;
+    }
+
+    .slicer-option.marketplace-tiktok,
+    .slicer-option.marketplace-shein {
+      background: #111827;
+      border-color: #475569;
+      color: #ffffff;
+    }
+
+    .slicer-option.marketplace-mercado-livre {
+      background: #ffe600;
+      border-color: #e0c800;
+      color: #1f2933;
+    }
+
+    .slicer-option.marketplace-amazon {
+      background: #6b7280;
+      border-color: #6b7280;
+      color: #ffffff;
+    }
+
+    .slicer-option.marketplace-magalu {
+      background: #0086ff;
+      border-color: #0086ff;
+      color: #ffffff;
+    }
+
+    .slicer-option.off.marketplace-shopee,
+    .slicer-option.off.marketplace-tiktok,
+    .slicer-option.off.marketplace-shein,
+    .slicer-option.off.marketplace-mercado-livre,
+    .slicer-option.off.marketplace-amazon,
+    .slicer-option.off.marketplace-magalu {
+      background: var(--surface-soft);
+      color: var(--text-muted);
+      border-color: var(--border-strong);
+    }
+
+    .dashboard-card {
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .summary-card {
+      overflow: visible;
+    }
+
+    .dashboard-card h2 {
+      margin: 0;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-strong);
+      color: var(--text);
+      font-size: 16px;
+    }
+
+    .summary-scroll {
+      overflow: visible;
+    }
+
+    .summary-table {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .summary-table thead {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .summary-table th {
+      position: sticky;
+      top: 0;
+      z-index: 11;
+    }
+
+    .summary-table th,
+    .summary-table td {
+      border-right: 0;
+      border-bottom: 0;
+    }
+
+    .summary-table td:last-child,
+    .summary-table th:last-child {
+      text-align: right;
+    }
+
+    .summary-table td:nth-child(2),
+    .summary-table td:nth-child(3),
+    .summary-table th:nth-child(2),
+    .summary-table th:nth-child(3),
+    .summary-table td:nth-child(4),
+    .summary-table th:nth-child(4),
+    .summary-table td:nth-child(5),
+    .summary-table th:nth-child(5),
+    .summary-table td:nth-child(6),
+    .summary-table th:nth-child(6) {
+      text-align: right;
+    }
+
+    .summary-table tr.subtotal td {
+      background: var(--surface-soft);
+      font-weight: 700;
+    }
+
+    .summary-table tr.total td {
+      background: #133a55;
+      border-top: 2px solid var(--accent);
+      font-weight: 800;
+    }
+
+    .summary-table tr.detail td:first-child {
+      padding-left: 26px;
+      color: var(--text-muted);
+    }
+
+    .summary-table tr.percent td {
+      background: var(--surface-strong);
+      font-weight: 700;
+    }
+
+    td.positive-variation {
+      color: var(--positive);
+      font-weight: 800;
+    }
+
+    td.negative-variation {
+      color: var(--negative);
+      font-weight: 800;
+    }
+
+    td.warning-variation {
+      color: #facc15;
+      font-weight: 800;
+    }
+
+    .summary-table tr.blank td {
+      height: 14px;
+      padding: 0;
+      background: var(--surface);
+    }
+
+    .waterfall-card {
+      margin-top: 12px;
+      width: 100%;
+    }
+
+    .waterfall-chart {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 460px;
+      padding: 28px 34px 74px;
+      overflow: visible;
+    }
+
+    .waterfall-item {
+      position: relative;
+      display: grid;
+      align-content: end;
+      min-width: 64px;
+      flex: 1 1 58px;
+      height: 330px;
+    }
+
+    .waterfall-bar {
+      width: 34px;
+      margin: 0 auto;
+      border-radius: 3px 3px 0 0;
+    }
+
+    .waterfall-bar.initial,
+    .waterfall-bar.final {
+      background: var(--accent-strong);
+    }
+
+    .waterfall-bar.positive {
+      background: var(--positive);
+    }
+
+    .waterfall-bar.negative {
+      background: var(--negative);
+    }
+
+    .waterfall-value {
+      position: absolute;
+      bottom: calc(var(--bar-bottom, 0px) + var(--bar-height, 0px) + 4px);
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .waterfall-label {
+      position: absolute;
+      bottom: -34px;
+      left: 50%;
+      width: 112px;
+      transform: translateX(-50%) rotate(-45deg);
+      transform-origin: top center;
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.1;
+      text-align: right;
+    }
+
+    .sku-table-card {
+      margin-top: 12px;
+    }
+
+    .sku-table-scroll {
+      max-height: 520px;
+      overflow: auto;
+    }
+
+    .sku-table {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 13px;
+    }
+
+    .advertising-table {
+      min-width: 980px;
+    }
+
+    .sku-table th,
+    .sku-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .sku-table th {
+      position: sticky;
+      top: 0;
+      background: var(--surface-muted);
+      color: var(--text);
+      text-align: left;
+      z-index: 1;
+    }
+
+    .sku-table th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .sku-table th.sortable::after {
+      content: " ↕";
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .sku-table th.sortable.sorted-asc::after {
+      content: " ↑";
+      color: var(--accent);
+    }
+
+    .sku-table th.sortable.sorted-desc::after {
+      content: " ↓";
+      color: var(--accent);
+    }
+
+    .sku-table td:nth-child(4),
+    .sku-table td:nth-child(5),
+    .sku-table td:nth-child(6),
+    .sku-table th:nth-child(4),
+    .sku-table th:nth-child(5),
+    .sku-table th:nth-child(6) {
+      text-align: right;
+    }
+
+    .advertising-table td:nth-child(4),
+    .advertising-table td:nth-child(5),
+    .advertising-table td:nth-child(6),
+    .advertising-table td:nth-child(7),
+    .advertising-table th:nth-child(4),
+    .advertising-table th:nth-child(5),
+    .advertising-table th:nth-child(6),
+    .advertising-table th:nth-child(7) {
+      text-align: right;
+    }
+
+    .sku-table tbody tr:nth-child(even) td {
+      background: #101929;
+    }
+
+    /*
+      A seção da tabela controla o tamanho máximo.
+      Se houver muitas linhas ou colunas, a rolagem aparece sem quebrar o layout.
+    */
+    .table-section {
+      overflow: hidden;
+    }
+
+    .table-scroll {
+      max-height: 62vh;
+      overflow: auto;
+      border-radius: 8px;
+    }
+
+    /*
+      Tabela com visual próximo ao Excel:
+      cabeçalho destacado, bordas leves e linhas alternadas.
+    */
+    table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: var(--surface);
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+      vertical-align: top;
+      color: var(--text-soft);
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--surface-muted);
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    tbody tr:nth-child(even) td {
+      background: #101929;
+    }
+
+    tbody tr:hover td {
+      background: #1d314f;
+    }
+
+    /*
+      Mensagem exibida no espaço da tabela antes de carregar qualquer base.
+    */
+    .empty-table {
+      padding: 34px 18px;
+      color: var(--text-muted);
+      text-align: center;
+      font-size: 15px;
+    }
+
+    /*
+      Ajuste para telas menores.
+    */
+    @media (max-width: 760px) {
+      .header {
+        align-items: center;
+        flex-direction: row;
+      }
+
+      .brand-strip {
+        margin-left: auto;
+      }
+
+      .dashboard-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .header h1 {
+        font-size: 26px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <!-- Cabeçalho com o nome do projeto. -->
+    <header class="header">
+      <h1>Marketplace Dashboard</h1>
+      <div class="brand-strip" aria-label="Logos dos marketplaces">
+        <span class="brand-logo">
+          <img src="assets/logos/mercado-livre.png" alt="Mercado Livre">
+        </span>
+        <span class="brand-logo">
+          <img src="assets/logos/shopee.png" alt="Shopee">
+        </span>
+        <span class="brand-logo">
+          <img src="assets/logos/amazon.png" alt="Amazon">
+        </span>
+        <span class="brand-logo">
+          <img src="assets/logos/magalu.png" alt="Magalu">
+        </span>
+        <span class="brand-logo">
+          <img src="assets/logos/shein.png" alt="Shein">
+        </span>
+        <span class="brand-logo">
+          <img src="assets/logos/tiktok.png" alt="TikTok">
+        </span>
+      </div>
+    </header>
+
+    <!-- Botões de navegação entre a tabela detalhada e o dashboard. -->
+    <nav class="tabs" aria-label="Abas do dashboard">
+      <button class="tab-button active" type="button" data-tab="dataPanel">Base de dados</button>
+      <button class="tab-button" type="button" data-tab="dashboardPanel">Dashboard</button>
+    </nav>
+
+    <!-- Aba com a tabela completa criada pelo JavaScript. -->
+    <section class="tab-panel active" id="dataPanel">
+      <section class="top-panel" aria-label="Upload">
+        <!-- Área de upload do arquivo. -->
+        <div class="upload-box">
+          <input
+            class="file-input"
+            id="fileInput"
+            type="file"
+            accept=".xlsx,.xls,.csv"
+          >
+          <label class="upload-button" for="fileInput">Subir base de dados</label>
+          <p class="upload-help">
+            Formatos aceitos: .xlsx, .xls e .csv. Somente linhas do ano atual serão exibidas.
+          </p>
+        </div>
+      </section>
+
+      <!-- Status inicial e estatísticas após o upload. -->
+      <section class="status-box" id="statusBox" aria-live="polite">
+        <p class="status-message" id="statusMessage">Nenhuma base carregada ainda.</p>
+      </section>
+
+      <section class="table-section" aria-label="Dados carregados">
+        <div class="table-scroll" id="tableContainer">
+          <div class="empty-table">Nenhuma base carregada ainda.</div>
+        </div>
+      </section>
+    </section>
+
+    <!-- Aba de visualização com filtros, indicadores e soma por categoria. -->
+    <section class="tab-panel" id="dashboardPanel">
+      <div class="dashboard" id="dashboardContainer">
+        <div class="empty-table">Carregue uma base para visualizar o dashboard.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    /*
+      Pegamos os elementos do HTML que serão usados pelo JavaScript.
+      Assim conseguimos reagir ao upload, atualizar mensagens e montar a tabela.
+    */
+    const fileInput = document.getElementById('fileInput');
+    const statusBox = document.getElementById('statusBox');
+    const statusMessage = document.getElementById('statusMessage');
+    const tableContainer = document.getElementById('tableContainer');
+    const dashboardContainer = document.getElementById('dashboardContainer');
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    /*
+      Estado simples da aplicação.
+      Ele guarda a base carregada, as colunas e os filtros ativos do dashboard.
+    */
+    let dashboardState = {
+      rows: [],
+      headers: [],
+      dataRows: [],
+      groupColumn: '',
+      actualColumn: '',
+      forecastColumn: '',
+      scenarioColumn: '',
+      amountColumn: '',
+      filters: {},
+      skuSort: { column: 'revenue', direction: 'desc' }
+    };
+
+    /*
+      Troca entre as abas sem recarregar a página.
+    */
+    tabButtons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        activateTab(button.dataset.tab);
+      });
+    });
+
+    /*
+      Quando o usuário escolhe um arquivo, esta função principal é executada.
+    */
+    fileInput.addEventListener('change', async function () {
+      const file = fileInput.files[0];
+
+      if (!file) {
+        return;
+      }
+
+      clearError();
+
+      try {
+        validateFile(file);
+
+        let rows;
+
+        /*
+          CSV é lido como texto para preservar os valores como strings.
+          Excel é lido com SheetJS, usando o texto exibido nas células.
+        */
+        if (isCsv(file.name)) {
+          const text = await file.text();
+          rows = parseCsv(text);
+        } else {
+          const buffer = await file.arrayBuffer();
+          rows = parseExcel(buffer);
+        }
+
+        validateRows(rows);
+
+        const filteredRows = filterRowsByCurrentYear(rows);
+
+        validateFilteredRows(filteredRows);
+        renderTable(filteredRows);
+        renderStats(file.name, rows, filteredRows);
+        setupDashboard(filteredRows);
+      } catch (error) {
+        showError(error.message || 'Não foi possível ler o arquivo. Tente novamente.');
+      } finally {
+        /*
+          Limpamos o valor do input para permitir escolher o mesmo arquivo novamente.
+        */
+        fileInput.value = '';
+      }
+    });
+
+    /*
+      Verifica se a extensão do arquivo está entre os formatos aceitos.
+    */
+    function validateFile(file) {
+      const acceptedExtensions = ['xlsx', 'xls', 'csv'];
+      const extension = getExtension(file.name);
+
+      if (!acceptedExtensions.includes(extension)) {
+        throw new Error('Formato não aceito. Envie um arquivo .xlsx, .xls ou .csv.');
+      }
+
+      if (file.size === 0) {
+        throw new Error('O arquivo está vazio. Envie uma planilha com dados.');
+      }
+    }
+
+    /*
+      Lê o primeiro nome de extensão após o último ponto do arquivo.
+    */
+    function getExtension(fileName) {
+      return fileName.split('.').pop().toLowerCase();
+    }
+
+    /*
+      Identifica rapidamente se o arquivo enviado é CSV.
+    */
+    function isCsv(fileName) {
+      return getExtension(fileName) === 'csv';
+    }
+
+    /*
+      Faz a leitura de Excel com SheetJS.
+      header: 1 retorna uma matriz simples, mantendo a ordem das colunas e linhas.
+      raw: false usa o texto formatado que aparece na planilha, evitando converter datas manualmente.
+      defval: '' mantém células vazias como texto vazio para não deslocar colunas.
+      blankrows: true mantém linhas vazias dentro da área usada, preservando a ordem original.
+    */
+    function parseExcel(buffer) {
+      const workbook = XLSX.read(buffer, {
+        type: 'array',
+        cellText: true,
+        cellDates: false
+      });
+
+      const firstSheetName = workbook.SheetNames[0];
+
+      if (!firstSheetName) {
+        throw new Error('O arquivo não possui nenhuma aba para leitura.');
+      }
+
+      const worksheet = workbook.Sheets[firstSheetName];
+
+      return XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        raw: false,
+        defval: '',
+        blankrows: true
+      });
+    }
+
+    /*
+      Parser simples de CSV.
+      Ele respeita aspas, quebras de linha dentro de campos e separadores dentro de textos.
+      Todos os campos continuam como texto, sem conversão de número, moeda ou data.
+    */
+    function parseCsv(text) {
+      const delimiter = detectCsvDelimiter(text);
+      const rows = [];
+      let row = [];
+      let value = '';
+      let insideQuotes = false;
+
+      for (let index = 0; index < text.length; index++) {
+        const char = text[index];
+        const nextChar = text[index + 1];
+
+        if (char === '"' && insideQuotes && nextChar === '"') {
+          value += '"';
+          index++;
+        } else if (char === '"') {
+          insideQuotes = !insideQuotes;
+        } else if (char === delimiter && !insideQuotes) {
+          row.push(value);
+          value = '';
+        } else if ((char === '\n' || char === '\r') && !insideQuotes) {
+          row.push(value);
+          rows.push(row);
+          row = [];
+          value = '';
+
+          if (char === '\r' && nextChar === '\n') {
+            index++;
+          }
+        } else {
+          value += char;
+        }
+      }
+
+      if (value !== '' || row.length > 0) {
+        row.push(value);
+        rows.push(row);
+      }
+
+      return removeTrailingEmptyRows(rows);
+    }
+
+    /*
+      Detecta o separador mais provável do CSV.
+      Isso ajuda tanto arquivos separados por vírgula quanto arquivos separados por ponto e vírgula.
+    */
+    function detectCsvDelimiter(text) {
+      const candidates = [',', ';', '\t'];
+      const firstLine = getFirstCsvLine(text);
+
+      return candidates.reduce(function (bestDelimiter, candidate) {
+        const bestCount = countDelimiter(firstLine, bestDelimiter);
+        const candidateCount = countDelimiter(firstLine, candidate);
+
+        return candidateCount > bestCount ? candidate : bestDelimiter;
+      }, ',');
+    }
+
+    /*
+      Encontra a primeira linha real do CSV sem parar em quebras de linha que estejam dentro de aspas.
+    */
+    function getFirstCsvLine(text) {
+      let insideQuotes = false;
+      let line = '';
+
+      for (let index = 0; index < text.length; index++) {
+        const char = text[index];
+        const nextChar = text[index + 1];
+
+        if (char === '"' && insideQuotes && nextChar === '"') {
+          line += char + nextChar;
+          index++;
+        } else if (char === '"') {
+          insideQuotes = !insideQuotes;
+          line += char;
+        } else if ((char === '\n' || char === '\r') && !insideQuotes) {
+          return line;
+        } else {
+          line += char;
+        }
+      }
+
+      return line;
+    }
+
+    /*
+      Conta separadores que estão fora de aspas.
+      Separadores dentro de textos não devem dividir colunas.
+    */
+    function countDelimiter(line, delimiter) {
+      let count = 0;
+      let insideQuotes = false;
+
+      for (let index = 0; index < line.length; index++) {
+        const char = line[index];
+        const nextChar = line[index + 1];
+
+        if (char === '"' && insideQuotes && nextChar === '"') {
+          index++;
+        } else if (char === '"') {
+          insideQuotes = !insideQuotes;
+        } else if (char === delimiter && !insideQuotes) {
+          count++;
+        }
+      }
+
+      return count;
+    }
+
+    /*
+      Remove apenas linhas vazias que estejam no fim do CSV.
+      Isso evita criar uma linha visual por causa de uma quebra de linha final comum em arquivos CSV.
+    */
+    function removeTrailingEmptyRows(rows) {
+      while (rows.length > 0 && rows[rows.length - 1].every(cell => cell === '')) {
+        rows.pop();
+      }
+
+      return rows;
+    }
+
+    /*
+      Confere se a planilha realmente tem conteúdo.
+      Uma base válida precisa ter pelo menos uma linha e uma coluna preenchida.
+    */
+    function validateRows(rows) {
+      const hasAnyValue = rows.some(row => row.some(cell => String(cell).length > 0));
+
+      if (!rows.length || !hasAnyValue) {
+        throw new Error('O arquivo está vazio ou não possui dados para exibir.');
+      }
+    }
+
+    /*
+      Filtra a base para manter somente as linhas do ano atual.
+      O cabeçalho sempre é preservado, pois ele define os nomes e a ordem das colunas.
+    */
+    function filterRowsByCurrentYear(rows) {
+      const currentYear = new Date().getFullYear();
+      const headerRow = rows[0];
+      const dataRows = rows.slice(1);
+      const dateColumnIndexes = findDateColumnIndexes(headerRow);
+
+      const filteredDataRows = dataRows.filter(function (row) {
+        return rowBelongsToYear(row, dateColumnIndexes, currentYear);
+      });
+
+      return [headerRow].concat(filteredDataRows);
+    }
+
+    /*
+      Procura colunas que provavelmente guardam data ou ano.
+      Não depende de um nome fixo: aceita variações como Data, Full Data, Date, Ano, Year etc.
+    */
+    function findDateColumnIndexes(headerRow) {
+      const dateWords = ['data', 'date', 'ano', 'year'];
+
+      return headerRow.reduce(function (indexes, header, index) {
+        const normalizedHeader = normalizeText(header);
+        const isDateColumn = dateWords.some(function (word) {
+          return normalizedHeader.includes(word);
+        });
+
+        if (isDateColumn) {
+          indexes.push(index);
+        }
+
+        return indexes;
+      }, []);
+    }
+
+    /*
+      Decide se uma linha pertence ao ano atual.
+      Primeiro tenta as colunas com cara de data; se não houver, procura o ano em qualquer célula.
+    */
+    function rowBelongsToYear(row, dateColumnIndexes, currentYear) {
+      const cellsToCheck = dateColumnIndexes.length
+        ? dateColumnIndexes.map(index => row[index])
+        : row;
+
+      return cellsToCheck.some(function (cell) {
+        return cellContainsYear(cell, currentYear, dateColumnIndexes.length > 0);
+      });
+    }
+
+    /*
+      Verifica se a célula contém o ano atual.
+      O valor é tratado como texto para não alterar moedas, datas, números ou símbolos.
+    */
+    function cellContainsYear(cell, currentYear, allowShortYear) {
+      const text = String(cell || '').trim();
+
+      if (!text) {
+        return false;
+      }
+
+      const yearPattern = new RegExp('(^|[^0-9])' + currentYear + '([^0-9]|$)');
+
+      if (yearPattern.test(text)) {
+        return true;
+      }
+
+      if (!allowShortYear) {
+        return false;
+      }
+
+      const shortYear = String(currentYear).slice(-2);
+      const shortYearDatePattern = new RegExp('(^|[\\/\\-.])' + shortYear + '($|[^0-9])');
+
+      return shortYearDatePattern.test(text);
+    }
+
+    /*
+      Normaliza apenas o texto do cabeçalho para procurar palavras de data.
+      Isso não muda o que aparece na tabela; é usado somente para identificar colunas.
+    */
+    function normalizeText(value) {
+      return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    /*
+      Mostra erro se nenhuma linha do ano atual for encontrada.
+    */
+    function validateFilteredRows(rows) {
+      if (rows.length <= 1) {
+        const currentYear = new Date().getFullYear();
+        throw new Error('Nenhuma linha do ano atual (' + currentYear + ') foi encontrada no arquivo.');
+      }
+    }
+
+    /*
+      Cria a tabela HTML usando exatamente a ordem das linhas e colunas recebidas.
+      A primeira linha da planilha vira o cabeçalho da tabela.
+    */
+    function renderTable(rows) {
+      const columnCount = getColumnCount(rows);
+      const headerRow = normalizeRow(rows[0], columnCount);
+      const bodyRows = rows.slice(1).map(row => normalizeRow(row, columnCount));
+
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const tbody = document.createElement('tbody');
+
+      const headerTr = document.createElement('tr');
+
+      headerRow.forEach(function (headerText) {
+        const th = document.createElement('th');
+        th.textContent = String(headerText);
+        headerTr.appendChild(th);
+      });
+
+      thead.appendChild(headerTr);
+
+      bodyRows.forEach(function (row) {
+        const tr = document.createElement('tr');
+
+        row.forEach(function (cellText) {
+          const td = document.createElement('td');
+          td.textContent = String(cellText);
+          tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(thead);
+      table.appendChild(tbody);
+
+      tableContainer.innerHTML = '';
+      tableContainer.appendChild(table);
+    }
+
+    /*
+      Descobre a maior quantidade de colunas presente em qualquer linha.
+      Isso impede que linhas com células vazias no final percam alinhamento visual.
+    */
+    function getColumnCount(rows) {
+      return rows.reduce(function (max, row) {
+        return Math.max(max, row.length);
+      }, 0);
+    }
+
+    /*
+      Completa uma linha com células vazias até atingir a quantidade total de colunas.
+      A ordem original dos dados não é alterada.
+    */
+    function normalizeRow(row, columnCount) {
+      const normalized = row.slice();
+
+      while (normalized.length < columnCount) {
+        normalized.push('');
+      }
+
+      return normalized;
+    }
+
+    /*
+      Prepara o dashboard depois que a planilha foi lida e filtrada pelo ano atual.
+    */
+    function setupDashboard(rows) {
+      const columnCount = getColumnCount(rows);
+      const headers = normalizeRow(rows[0], columnCount).map(header => String(header));
+      const dataRows = rows.slice(1).map(row => normalizeRow(row, columnCount));
+      const groupColumn = chooseGroupColumn(headers);
+      const scenarioColumn = chooseScenarioColumn(headers, dataRows);
+
+      dashboardState = {
+        rows,
+        headers,
+        dataRows,
+        groupColumn,
+        actualColumn: chooseActualColumn(headers, dataRows, groupColumn),
+        forecastColumn: chooseForecastColumn(headers, dataRows, groupColumn),
+        scenarioColumn,
+        amountColumn: scenarioColumn ? chooseAmountColumn(headers, dataRows, groupColumn, scenarioColumn) : '',
+        filters: {},
+        skuSort: { column: 'revenue', direction: 'desc' }
+      };
+
+      renderDashboard();
+    }
+
+    /*
+      Escolhe automaticamente a coluna de agrupamento.
+      Se existir Categoria, ela será usada; se não existir, usa uma coluna parecida.
+    */
+    function chooseGroupColumn(headers) {
+      return findHeader(headers, ['categoria'])
+        || findHeader(headers, ['categoria2'])
+        || headers[0]
+        || '';
+    }
+
+    /*
+      Escolhe automaticamente a coluna Actual.
+    */
+    function chooseActualColumn(headers, dataRows, groupColumn) {
+      const preferred = findHeader(headers, ['actual', 'atual']);
+
+      if (preferred && hasNumericValues(preferred, headers, dataRows)) {
+        return preferred;
+      }
+
+      return chooseNumericColumn(headers, dataRows, groupColumn, ['valor completo', 'valor', 'fat', 'faturamento', 'total', 'receita']);
+    }
+
+    /*
+      Escolhe automaticamente a coluna Forecast.
+    */
+    function chooseForecastColumn(headers, dataRows, groupColumn) {
+      const preferred = findHeader(headers, ['forecast', 'previsao', 'previsão']);
+
+      if (preferred && hasNumericValues(preferred, headers, dataRows)) {
+        return preferred;
+      }
+
+      return '';
+    }
+
+    /*
+      Algumas bases vêm no formato longo: uma coluna diz se a linha é Actual ou Forecast.
+      Esta função encontra essa coluna quando ela existir.
+    */
+    function chooseScenarioColumn(headers, dataRows) {
+      const explicitColumn = findHeader(headers, ['datatype', 'data type', 'tipo de dado', 'tipo dados', 'tipo']);
+
+      if (explicitColumn) {
+        return explicitColumn;
+      }
+
+      return headers.find(function (header) {
+        const index = headers.indexOf(header);
+        const values = new Set(dataRows.map(row => normalizeText(row[index])));
+
+        return hasActualDatatype(values) && hasForecastDatatype(values);
+      }) || '';
+    }
+
+    /*
+      No formato longo, escolhe a coluna numérica que será somada para Actual e Forecast.
+    */
+    function chooseAmountColumn(headers, dataRows, groupColumn, scenarioColumn) {
+      const preferred = chooseNumericColumn(headers, dataRows, groupColumn, ['actual', 'valor completo', 'valor', 'fat', 'faturamento', 'total', 'receita']);
+
+      if (preferred && preferred !== scenarioColumn) {
+        return preferred;
+      }
+
+      return headers.reduce(function (bestHeader, header) {
+        if (header === groupColumn || header === scenarioColumn || normalizeText(header) === 'categoria') {
+          return bestHeader;
+        }
+
+        if (!hasNumericValues(header, headers, dataRows)) {
+          return bestHeader;
+        }
+
+        if (!bestHeader) {
+          return header;
+        }
+
+        const currentScore = getNumericScore(header, headers, dataRows);
+        const bestScore = getNumericScore(bestHeader, headers, dataRows);
+
+        return currentScore > bestScore ? header : bestHeader;
+      }, '');
+    }
+
+    /*
+      Reconhece textos que representam Actual na coluna Datatype.
+    */
+    function isActualDatatype(value) {
+      const normalizedValue = normalizeText(value);
+
+      return normalizedValue === 'actual'
+        || normalizedValue === 'atual'
+        || normalizedValue === 'real'
+        || normalizedValue === 'realizado';
+    }
+
+    /*
+      Reconhece textos que representam Forecast na coluna Datatype.
+    */
+    function isForecastDatatype(value) {
+      const normalizedValue = normalizeText(value);
+
+      return normalizedValue === 'forecast'
+        || normalizedValue === 'previsao'
+        || normalizedValue === 'previsto'
+        || normalizedValue === 'orcado'
+        || normalizedValue === 'budget';
+    }
+
+    /*
+      Verifica se um conjunto de valores contém algum Datatype de Actual.
+    */
+    function hasActualDatatype(values) {
+      return Array.from(values).some(value => isActualDatatype(value));
+    }
+
+    /*
+      Verifica se um conjunto de valores contém algum Datatype de Forecast.
+    */
+    function hasForecastDatatype(values) {
+      return Array.from(values).some(value => isForecastDatatype(value));
+    }
+
+    /*
+      Escolhe uma coluna numérica por lista de prioridade ou pela maior quantidade de números.
+    */
+    function chooseNumericColumn(headers, dataRows, groupColumn, preferredNames) {
+      const preferred = findHeader(headers, preferredNames);
+
+      if (preferred && hasNumericValues(preferred, headers, dataRows)) {
+        return preferred;
+      }
+
+      return headers.reduce(function (bestHeader, header) {
+        if (header === groupColumn || normalizeText(header) === 'categoria') {
+          return bestHeader;
+        }
+
+        if (!hasNumericValues(header, headers, dataRows)) {
+          return bestHeader;
+        }
+
+        if (!bestHeader) {
+          return header;
+        }
+
+        const currentScore = getNumericScore(header, headers, dataRows);
+        const bestScore = getNumericScore(bestHeader, headers, dataRows);
+
+        return currentScore > bestScore ? header : bestHeader;
+      }, '') || headers[0] || '';
+    }
+
+    /*
+      Localiza cabeçalhos sem exigir acentos ou maiúsculas.
+    */
+    function findHeader(headers, names) {
+      return headers.find(function (header) {
+        const normalizedHeader = normalizeText(header);
+
+        return names.some(function (name) {
+          return normalizedHeader === normalizeText(name);
+        });
+      });
+    }
+
+    /*
+      Confere se uma coluna tem pelo menos um valor que pode ser somado.
+    */
+    function hasNumericValues(header, headers, dataRows) {
+      return getNumericScore(header, headers, dataRows) > 0;
+    }
+
+    /*
+      Conta quantas células de uma coluna parecem números, moeda ou percentuais.
+    */
+    function getNumericScore(header, headers, dataRows) {
+      const index = headers.indexOf(header);
+
+      return dataRows.reduce(function (score, row) {
+        return score + (parseNumber(row[index]) === null ? 0 : 1);
+      }, 0);
+    }
+
+    /*
+      Renderiza todo o dashboard: controles, filtros, cartões, tabela e gráfico.
+    */
+    function renderDashboard() {
+      if (!dashboardState.headers.length) {
+        dashboardContainer.innerHTML = '<div class="empty-table">Carregue uma base para visualizar o dashboard.</div>';
+        return;
+      }
+
+      const filteredRows = getDashboardFilteredRows();
+      const summary = buildCategorySummary(filteredRows);
+      const statement = buildFinancialStatement(summary, filteredRows);
+      const filterColumns = getFilterColumns();
+
+      dashboardContainer.innerHTML = '';
+      dashboardContainer.appendChild(createDashboardLayout(filterColumns, statement));
+      dashboardContainer.appendChild(createWaterfallCard(statement));
+      dashboardContainer.appendChild(createSkuDetailsCard(filteredRows));
+      dashboardContainer.appendChild(createAdvertisingDetailsCard(filteredRows));
+    }
+
+    /*
+      Escolhe quais colunas aparecem como filtros, usando nomes comuns de marketplace.
+    */
+    function getFilterColumns() {
+      const preferredNames = [
+        'Categoria2',
+        'Marketplace',
+        'Marketplace venda',
+        'SKU',
+        'Id anúncio',
+        'Descrição'
+      ];
+
+      const selected = preferredNames
+        .map(name => findHeader(dashboardState.headers, [name]))
+        .filter(Boolean);
+
+      return selected.length ? selected : dashboardState.headers.slice(0, 6);
+    }
+
+    /*
+      Monta os filtros nas laterais e o demonstrativo no centro.
+    */
+    function createDashboardLayout(filterColumns, statement) {
+      const layout = document.createElement('div');
+      const leftColumn = document.createElement('div');
+      const rightColumn = document.createElement('div');
+      const middleColumn = document.createElement('div');
+      const mainColumn = document.createElement('div');
+      const midpoint = Math.ceil(filterColumns.length / 2);
+
+      layout.className = 'dashboard-layout';
+      leftColumn.className = 'slicer-column';
+      rightColumn.className = 'slicer-column';
+      mainColumn.className = 'dashboard-main';
+
+      filterColumns.slice(0, midpoint).forEach(function (column) {
+        leftColumn.appendChild(createSlicer(column));
+      });
+
+      filterColumns.slice(midpoint).forEach(function (column) {
+        rightColumn.appendChild(createSlicer(column));
+      });
+
+      mainColumn.appendChild(createSummaryTableCard(statement));
+      middleColumn.appendChild(mainColumn);
+      layout.appendChild(leftColumn);
+      layout.appendChild(middleColumn);
+      layout.appendChild(rightColumn);
+
+      return layout;
+    }
+
+    /*
+      Cria um filtro visual no estilo dos segmentadores do Excel.
+      Clique em um valor para ligar ou desligar aquele filtro.
+    */
+    function createSlicer(column) {
+      const columnIndex = dashboardState.headers.indexOf(column);
+      const selectedValues = dashboardState.filters[column] || [];
+      const values = getUniqueValues(columnIndex).slice(0, 120);
+      const slicer = document.createElement('section');
+      const header = document.createElement('div');
+      const title = document.createElement('span');
+      const clearButton = document.createElement('button');
+      const options = document.createElement('div');
+
+      slicer.className = 'slicer';
+      header.className = 'slicer-header';
+      title.textContent = column;
+      clearButton.className = 'slicer-clear';
+      clearButton.type = 'button';
+      clearButton.textContent = 'limpar';
+      clearButton.addEventListener('click', function () {
+        delete dashboardState.filters[column];
+        renderDashboard();
+      });
+
+      options.className = 'slicer-options' + (isMarketplaceVendaColumn(column) ? ' single-column' : '');
+
+      values.forEach(function (value) {
+        const option = document.createElement('button');
+        const isSelected = selectedValues.length === 0 || selectedValues.includes(value);
+
+        option.className = 'slicer-option' + getMarketplaceColorClass(column, value) + (isSelected ? '' : ' off');
+        option.type = 'button';
+        option.title = value;
+        option.textContent = value || '(vazio)';
+        option.addEventListener('click', function () {
+          toggleFilterValue(column, value);
+        });
+
+        options.appendChild(option);
+      });
+
+      header.appendChild(title);
+      header.appendChild(clearButton);
+      slicer.appendChild(header);
+      slicer.appendChild(options);
+
+      return slicer;
+    }
+
+    /*
+      Lista os valores únicos de uma coluna mantendo a ordem em que aparecem na base.
+    */
+    function getUniqueValues(columnIndex) {
+      const seen = new Set();
+      const values = [];
+
+      dashboardState.dataRows.forEach(function (row) {
+        const value = String(row[columnIndex] || '');
+
+        if (!seen.has(value)) {
+          seen.add(value);
+          values.push(value);
+        }
+      });
+
+      return values;
+    }
+
+    /*
+      Identifica a coluna Marketplace venda para exibir uma opção por linha.
+    */
+    function isMarketplaceVendaColumn(column) {
+      return normalizeText(column) === 'marketplace venda';
+    }
+
+    /*
+      Aplica cores de marca somente no filtro Marketplace.
+    */
+    function getMarketplaceColorClass(column, value) {
+      if (normalizeText(column) !== 'marketplace') {
+        return '';
+      }
+
+      const marketplace = normalizeText(value);
+
+      if (marketplace.includes('shopee')) {
+        return ' marketplace-shopee';
+      }
+
+      if (marketplace.includes('tiktok')) {
+        return ' marketplace-tiktok';
+      }
+
+      if (marketplace.includes('mercado livre')) {
+        return ' marketplace-mercado-livre';
+      }
+
+      if (marketplace.includes('amazon')) {
+        return ' marketplace-amazon';
+      }
+
+      if (marketplace.includes('magalu')) {
+        return ' marketplace-magalu';
+      }
+
+      if (marketplace.includes('shein')) {
+        return ' marketplace-shein';
+      }
+
+      return '';
+    }
+
+    /*
+      Alterna um valor do filtro.
+      Sem valores selecionados significa "mostrar todos".
+    */
+    function toggleFilterValue(column, value) {
+      const currentValues = dashboardState.filters[column] || [];
+
+      if (!currentValues.length) {
+        dashboardState.filters[column] = [value];
+      } else if (currentValues.includes(value)) {
+        const nextValues = currentValues.filter(item => item !== value);
+
+        if (nextValues.length) {
+          dashboardState.filters[column] = nextValues;
+        } else {
+          delete dashboardState.filters[column];
+        }
+      } else {
+        currentValues.push(value);
+        dashboardState.filters[column] = currentValues;
+      }
+
+      renderDashboard();
+    }
+
+    /*
+      Aplica todos os filtros ativos nos dados do dashboard.
+    */
+    function getDashboardFilteredRows() {
+      return dashboardState.dataRows.filter(function (row) {
+        return Object.keys(dashboardState.filters).every(function (column) {
+          const selectedValues = dashboardState.filters[column];
+          const columnIndex = dashboardState.headers.indexOf(column);
+          const value = String(row[columnIndex] || '');
+
+          return !selectedValues.length || selectedValues.includes(value);
+        });
+      });
+    }
+
+    /*
+      Soma Actual e Forecast agrupando pela categoria selecionada.
+    */
+    function buildCategorySummary(rows) {
+      return buildSummaryByColumn(rows, dashboardState.groupColumn);
+    }
+
+    /*
+      Soma Actual e Forecast agrupando por uma coluna escolhida.
+    */
+    function buildSummaryByColumn(rows, groupColumn, rowFilter) {
+      const groupIndex = dashboardState.headers.indexOf(groupColumn);
+      const actualIndex = dashboardState.headers.indexOf(dashboardState.actualColumn);
+      const forecastIndex = dashboardState.headers.indexOf(dashboardState.forecastColumn);
+      const scenarioIndex = dashboardState.headers.indexOf(dashboardState.scenarioColumn);
+      const amountIndex = dashboardState.headers.indexOf(dashboardState.amountColumn);
+      const groups = new Map();
+
+      rows.forEach(function (row) {
+        if (typeof rowFilter === 'function' && !rowFilter(row)) {
+          return;
+        }
+
+        const groupName = String(row[groupIndex] || '(vazio)');
+        let actualValue = 0;
+        let forecastValue = 0;
+        const current = groups.get(groupName) || { name: groupName, actual: 0, forecast: 0, count: 0 };
+
+        if (scenarioIndex >= 0 && amountIndex >= 0) {
+          const scenario = normalizeText(row[scenarioIndex]);
+          const amount = parseNumber(row[amountIndex]) || 0;
+
+          if (isActualDatatype(scenario)) {
+            actualValue = actualIndex >= 0 ? parseNumber(row[actualIndex]) || 0 : amount;
+          } else if (isForecastDatatype(scenario)) {
+            forecastValue = forecastIndex >= 0 ? parseNumber(row[forecastIndex]) || 0 : amount;
+          }
+        } else {
+          actualValue = actualIndex >= 0 ? parseNumber(row[actualIndex]) || 0 : 0;
+          forecastValue = forecastIndex >= 0 ? parseNumber(row[forecastIndex]) || 0 : 0;
+        }
+
+        current.actual += actualValue;
+        current.forecast += forecastValue;
+        current.count += 1;
+        groups.set(groupName, current);
+      });
+
+      return Array.from(groups.values()).sort(function (a, b) {
+        return b.actual - a.actual;
+      });
+    }
+
+    /*
+      Abre 03.Despesas Marketplace por Sub Categoria.
+    */
+    function buildMarketplaceExpenseDetails(rows) {
+      const categoryIndex = dashboardState.headers.indexOf(dashboardState.groupColumn);
+      const subcategoryColumn = findHeader(dashboardState.headers, ['Sub Categoria', 'Subcategoria', 'Sub-Categoria']);
+
+      if (!subcategoryColumn || categoryIndex < 0) {
+        return [];
+      }
+
+      const allowedSubcategories = [
+        'Comissão',
+        'Moedas',
+        'Publicidade',
+        'Rebate',
+        'Shopee antecipa',
+        'Tarifa de frete'
+      ];
+      const allowedLookup = new Set(allowedSubcategories.map(name => normalizeText(name)));
+      const summary = buildSummaryByColumn(rows, subcategoryColumn, function (row) {
+        const category = normalizeText(row[categoryIndex]);
+        const subcategoryIndex = dashboardState.headers.indexOf(subcategoryColumn);
+        const subcategory = normalizeText(row[subcategoryIndex]);
+
+        return category === normalizeText('03.Despesas Marketplace') && allowedLookup.has(subcategory);
+      });
+      const lookup = createSummaryLookup(summary);
+
+      return allowedSubcategories.map(function (name) {
+        const pair = sumCategoryPair(lookup, [name]);
+
+        return createStatementRow(name, pair.actual, pair.forecast, countCategory(lookup, [name]), 'detail');
+      });
+    }
+
+    /*
+      Monta o demonstrativo na ordem definida pelo usuário.
+      As linhas de base usam SOMASE por categoria; as linhas calculadas usam as fórmulas solicitadas.
+    */
+    function buildFinancialStatement(summary, rows) {
+      const lookup = createSummaryLookup(summary);
+      const quantity = sumCategoryPair(lookup, ['14.Quantidade']);
+      const grossRevenue = sumCategoryPair(lookup, ['13.Faturamento Bruto']);
+      const unitPrice = dividePair(grossRevenue, quantity);
+      const tax = sumCategoryPair(lookup, ['02.Imposto']);
+      const taxPercent = dividePair(tax, grossRevenue);
+      const netRevenue = addPairs(grossRevenue, tax);
+      const marketplaceExpenses = sumCategoryPair(lookup, ['03.Despesas Marketplace']);
+      const marketplaceExpenseCount = countCategory(lookup, ['03.Despesas Marketplace']);
+      const rawMaterial = sumCategoryPair(lookup, ['04.Materia Prima']);
+      const labor = sumCategoryPair(lookup, ['05.Mão de Obra']);
+      const packaging = sumCategoryPair(lookup, ['06.Embalagem']);
+      const energy = sumCategoryPair(lookup, ['07.Energia']);
+      const sewing = sumCategoryPair(lookup, ['08.Costura']);
+      const cutting = sumCategoryPair(lookup, ['09.Corte']);
+      const painting = sumCategoryPair(lookup, ['10.Pintura']);
+      const assembly = sumCategoryPair(lookup, ['11.Montagem']);
+      const resale = sumCategoryPair(lookup, ['13.Revenda']);
+      const totalCost = addPairs(rawMaterial, labor, packaging, energy, sewing, cutting, painting, assembly, resale);
+      const grossMargin = addPairs(netRevenue, marketplaceExpenses, totalCost);
+      const grossMarginPercent = dividePair(grossMargin, netRevenue);
+      const marketplaceExpenseDetails = buildMarketplaceExpenseDetails(rows || dashboardState.dataRows);
+
+      return [
+        createStatementRow('14.Quantidade', quantity.actual, quantity.forecast, countCategory(lookup, ['14.Quantidade'])),
+        createBlankStatementRow(),
+        createStatementRow('13.Faturamento Bruto', grossRevenue.actual, grossRevenue.forecast, countCategory(lookup, ['13.Faturamento Bruto'])),
+        createBlankStatementRow(),
+        createStatementRow('01.Preço unitário', unitPrice.actual, unitPrice.forecast, '', 'number'),
+        createBlankStatementRow(),
+        createStatementRow('02.Imposto', tax.actual, tax.forecast, countCategory(lookup, ['02.Imposto'])),
+        createStatementRow('02.Imposto %', taxPercent.actual, taxPercent.forecast, '', 'percent'),
+        createBlankStatementRow(),
+        createStatementRow('Faturamento Liquido', netRevenue.actual, netRevenue.forecast, '', 'subtotal'),
+        createBlankStatementRow(),
+        createStatementRow('03.Despesas Marketplace', marketplaceExpenses.actual, marketplaceExpenses.forecast, marketplaceExpenseCount, 'subtotal'),
+        ...marketplaceExpenseDetails,
+        createBlankStatementRow(),
+        createStatementRow('Total Cost', totalCost.actual, totalCost.forecast, '', 'subtotal'),
+        createStatementRow('04.Materia Prima', rawMaterial.actual, rawMaterial.forecast, countCategory(lookup, ['04.Materia Prima'])),
+        createStatementRow('05.Mão de Obra', labor.actual, labor.forecast, countCategory(lookup, ['05.Mão de Obra'])),
+        createStatementRow('06.Embalagem', packaging.actual, packaging.forecast, countCategory(lookup, ['06.Embalagem'])),
+        createStatementRow('07.Energia', energy.actual, energy.forecast, countCategory(lookup, ['07.Energia'])),
+        createStatementRow('08.Costura', sewing.actual, sewing.forecast, countCategory(lookup, ['08.Costura'])),
+        createStatementRow('09.Corte', cutting.actual, cutting.forecast, countCategory(lookup, ['09.Corte'])),
+        createStatementRow('10.Pintura', painting.actual, painting.forecast, countCategory(lookup, ['10.Pintura'])),
+        createStatementRow('11.Montagem', assembly.actual, assembly.forecast, countCategory(lookup, ['11.Montagem'])),
+        createStatementRow('13.Revenda', resale.actual, resale.forecast, countCategory(lookup, ['13.Revenda'])),
+        createBlankStatementRow(),
+        createStatementRow('GM', grossMargin.actual, grossMargin.forecast, '', 'total'),
+        createStatementRow('GM%', grossMarginPercent.actual, grossMarginPercent.forecast, '', 'percent')
+      ];
+    }
+
+    /*
+      Cria um mapa para buscar categorias ignorando acentos, espaços extras e maiúsculas.
+    */
+    function createSummaryLookup(summary) {
+      const lookup = new Map();
+
+      summary.forEach(function (item) {
+        lookup.set(normalizeText(item.name), item);
+      });
+
+      return lookup;
+    }
+
+    /*
+      Soma uma ou mais categorias para Actual e Forecast, como um SOMASE duplo.
+    */
+    function sumCategoryPair(lookup, names) {
+      return names.reduce(function (total, name) {
+        const item = lookup.get(normalizeText(name));
+
+        if (!item) {
+          return total;
+        }
+
+        return {
+          actual: total.actual + item.actual,
+          forecast: total.forecast + item.forecast
+        };
+      }, { actual: 0, forecast: 0 });
+    }
+
+    /*
+      Soma pares de Actual e Forecast.
+    */
+    function addPairs() {
+      return Array.from(arguments).reduce(function (total, pair) {
+        return {
+          actual: total.actual + pair.actual,
+          forecast: total.forecast + pair.forecast
+        };
+      }, { actual: 0, forecast: 0 });
+    }
+
+    /*
+      Divide pares de valores, usado para preço unitário e percentuais.
+    */
+    function dividePair(numerator, denominator) {
+      return {
+        actual: denominator.actual === 0 ? 0 : numerator.actual / denominator.actual,
+        forecast: denominator.forecast === 0 ? 0 : numerator.forecast / denominator.forecast
+      };
+    }
+
+    /*
+      Soma a quantidade de linhas encontradas para uma ou mais categorias.
+    */
+    function countCategory(lookup, names) {
+      return names.reduce(function (total, name) {
+        const item = lookup.get(normalizeText(name));
+
+        return total + (item ? item.count : 0);
+      }, 0);
+    }
+
+    /*
+      Padroniza as linhas do demonstrativo.
+    */
+    function createStatementRow(name, actual, forecast, count, type) {
+      const reportDay = getMtdReportDay();
+      const currentMonthDays = getCurrentMonthDays();
+      const mtd = (forecast / currentMonthDays) * reportDay;
+
+      return {
+        name,
+        actual,
+        forecast,
+        variation: actual - forecast,
+        mtd,
+        mtdVariation: actual - mtd,
+        count,
+        type: type || 'base'
+      };
+    }
+
+    /*
+      Linha vazia usada para separar blocos do demonstrativo.
+    */
+    function createBlankStatementRow() {
+      return {
+        name: '',
+        actual: 0,
+        forecast: 0,
+        variation: 0,
+        mtd: 0,
+        mtdVariation: 0,
+        count: '',
+        type: 'blank'
+      };
+    }
+
+    /*
+      O MTD usa D-1 no padrão Brasil.
+      Exemplo: em 28/04/2026, o relatório usa 27 dias realizados.
+    */
+    function getMtdReportDay() {
+      const day = getBrazilDateParts().day;
+
+      return Math.max(day - 1, 1);
+    }
+
+    /*
+      Calcula quantos dias existem no mês atual.
+      Exemplo: abril retorna 30, dezembro retorna 31.
+    */
+    function getCurrentMonthDays() {
+      const brazilDate = getBrazilDateParts();
+
+      return new Date(brazilDate.year, brazilDate.month, 0).getDate();
+    }
+
+    /*
+      Extrai a data atual no formato brasileiro e timezone America/Sao_Paulo.
+      Isso evita depender do formato americano do navegador.
+    */
+    function getBrazilDateParts() {
+      const parts = new Intl.DateTimeFormat('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }).formatToParts(new Date());
+
+      return {
+        day: Number(parts.find(part => part.type === 'day').value),
+        month: Number(parts.find(part => part.type === 'month').value),
+        year: Number(parts.find(part => part.type === 'year').value)
+      };
+    }
+
+    /*
+      Tabela do demonstrativo em ordem fixa.
+    */
+    function createSummaryTableCard(statement) {
+      const card = document.createElement('section');
+      const title = document.createElement('h2');
+      const scroll = document.createElement('div');
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const tbody = document.createElement('tbody');
+
+      card.className = 'dashboard-card summary-card';
+      scroll.className = 'summary-scroll';
+      table.className = 'summary-table';
+      title.textContent = 'Demonstrativo por Categoria - MTD D-' + getMtdReportDay() + '/' + getCurrentMonthDays();
+
+      thead.innerHTML = '<tr><th>Account</th><th>Forecast</th><th>Actual</th><th>Variação</th><th>MTD</th><th>Variação MTD</th></tr>';
+
+      statement.forEach(function (item) {
+        const tr = document.createElement('tr');
+        tr.className = item.type;
+
+        if (item.type === 'blank') {
+          tr.innerHTML = '<td colspan="6"></td>';
+        } else {
+          tr.innerHTML = '<td>' + escapeHtml(item.name) + '</td><td>' + formatStatementValue(item, 'forecast') + '</td><td>' + formatStatementValue(item, 'actual') + '</td><td class="' + getVariationClass(item) + '">' + formatStatementValue(item, 'variation') + '</td><td>' + formatStatementValue(item, 'mtd') + '</td><td class="' + getVariationClass(item, 'mtdVariation') + '">' + formatStatementValue(item, 'mtdVariation') + '</td>';
+        }
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(thead);
+      table.appendChild(tbody);
+      scroll.appendChild(table);
+      card.appendChild(title);
+      card.appendChild(scroll);
+
+      return card;
+    }
+
+    /*
+      Cria o gráfico cascata Forecast vs Actual usando as variações do demonstrativo.
+    */
+    function createWaterfallCard(statement) {
+      const card = document.createElement('section');
+      const title = document.createElement('h2');
+      const chart = document.createElement('div');
+      const data = buildWaterfallData(statement);
+      const minValue = Math.min(...data.map(item => Math.min(item.start, item.end)), 0);
+      const maxValue = Math.max(...data.map(item => Math.max(item.start, item.end)), 1);
+      const valueRange = Math.max(maxValue - minValue, 1);
+      const chartHeight = 310;
+
+      card.className = 'dashboard-card waterfall-card';
+      title.textContent = 'Forecast vs Actual';
+      chart.className = 'waterfall-chart';
+
+      data.forEach(function (item) {
+        const element = document.createElement('div');
+        const value = document.createElement('div');
+        const bar = document.createElement('div');
+        const label = document.createElement('div');
+        const barStart = Math.min(item.start, item.end);
+        const barHeight = Math.max(Math.abs(item.end - item.start), 1);
+        const bottom = ((barStart - minValue) / valueRange) * chartHeight;
+        const height = Math.max((barHeight / valueRange) * chartHeight, 2);
+
+        element.className = 'waterfall-item';
+        element.style.setProperty('--bar-bottom', bottom + 'px');
+        element.style.setProperty('--bar-height', height + 'px');
+
+        value.className = 'waterfall-value';
+        value.textContent = formatCurrency(item.displayValue);
+
+        bar.className = 'waterfall-bar ' + item.type;
+        bar.style.height = height + 'px';
+        bar.style.marginBottom = bottom + 'px';
+
+        label.className = 'waterfall-label';
+        label.textContent = item.label;
+
+        element.appendChild(value);
+        element.appendChild(bar);
+        element.appendChild(label);
+        chart.appendChild(element);
+      });
+
+      card.appendChild(title);
+      card.appendChild(chart);
+
+      return card;
+    }
+
+    /*
+      Monta os pontos do gráfico cascata.
+      Começa no GM Forecast, passa pelas variações e termina no GM Actual.
+    */
+    function buildWaterfallData(statement) {
+      const gmRow = findStatementRow(statement, 'GM');
+      const waterfallRows = statement.filter(function (item) {
+        return shouldUseInWaterfall(item);
+      });
+      const data = [
+        {
+          label: 'Forecast',
+          start: 0,
+          end: gmRow ? gmRow.forecast : 0,
+          displayValue: gmRow ? gmRow.forecast : 0,
+          type: 'initial'
+        }
+      ];
+      let runningValue = gmRow ? gmRow.forecast : 0;
+
+      waterfallRows.forEach(function (item) {
+        const nextValue = runningValue + item.variation;
+
+        data.push({
+          label: item.name,
+          start: runningValue,
+          end: nextValue,
+          displayValue: item.variation,
+          type: item.variation >= 0 ? 'positive' : 'negative'
+        });
+
+        runningValue = nextValue;
+      });
+
+      data.push({
+        label: 'Actual',
+        start: 0,
+        end: gmRow ? gmRow.actual : runningValue,
+        displayValue: gmRow ? gmRow.actual : runningValue,
+        type: 'final'
+      });
+
+      return data;
+    }
+
+    /*
+      Exclui as linhas que não devem fazer parte da ponte do cascata.
+    */
+    function shouldUseInWaterfall(item) {
+      const excludedRows = [
+        '14.Quantidade',
+        '01.Preço unitário',
+        '02.Imposto',
+        '02.Imposto %',
+        'Faturamento Liquido',
+        'Total Cost',
+        'GM',
+        'GM%'
+      ];
+
+      if (item.type === 'blank' || item.type === 'percent' || item.type === 'detail') {
+        return false;
+      }
+
+      return !excludedRows.some(function (rowName) {
+        return normalizeText(rowName) === normalizeText(item.name);
+      });
+    }
+
+    /*
+      Busca uma linha do demonstrativo pelo nome.
+    */
+    function findStatementRow(statement, name) {
+      return statement.find(function (item) {
+        return normalizeText(item.name) === normalizeText(name);
+      });
+    }
+
+    /*
+      Cria a tabela de SKU e anúncio vinculada aos mesmos filtros do dashboard.
+    */
+    function createSkuDetailsCard(filteredRows) {
+      const marketplaceSaleColumn = findHeader(dashboardState.headers, ['Marketplace venda']);
+      const skuColumn = findHeader(dashboardState.headers, ['SKU']);
+      const adColumn = findHeader(dashboardState.headers, ['Id anúncio', 'Id anuncio', 'Anúncio', 'Anuncio']);
+      const card = document.createElement('section');
+      const title = document.createElement('h2');
+      const scroll = document.createElement('div');
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const tbody = document.createElement('tbody');
+
+      card.className = 'dashboard-card sku-table-card';
+      title.textContent = 'SKU e Anúncio';
+      scroll.className = 'sku-table-scroll';
+      table.className = 'sku-table';
+      thead.appendChild(createSkuTableHeader());
+
+      if (!marketplaceSaleColumn || !skuColumn || !adColumn) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="6">Colunas Marketplace venda, SKU e Id anúncio não encontradas na base.</td>';
+        tbody.appendChild(tr);
+      } else {
+        buildSkuDetails(filteredRows, marketplaceSaleColumn, skuColumn, adColumn).forEach(function (item) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + escapeHtml(item.marketplaceSale) + '</td><td>' + escapeHtml(item.sku) + '</td><td>' + escapeHtml(item.ad) + '</td><td>' + formatCurrency(item.revenue) + '</td><td class="' + getSignedClass(item.gm) + '">' + formatCurrency(item.gm) + '</td><td class="' + getSignedClass(item.gmPercent) + '">' + formatPercent(item.gmPercent) + '</td>';
+          tbody.appendChild(tr);
+        });
+      }
+
+      table.appendChild(thead);
+      table.appendChild(tbody);
+      scroll.appendChild(table);
+      card.appendChild(title);
+      card.appendChild(scroll);
+
+      return card;
+    }
+
+    /*
+      Cabeçalho clicável da tabela de SKU.
+    */
+    function createSkuTableHeader() {
+      const tr = document.createElement('tr');
+      const columns = [
+        { key: 'marketplaceSale', label: 'Marketplace venda' },
+        { key: 'sku', label: 'SKU' },
+        { key: 'ad', label: 'Anúncio' },
+        { key: 'revenue', label: 'Faturamento' },
+        { key: 'gm', label: 'GM' },
+        { key: 'gmPercent', label: 'GM%' }
+      ];
+
+      columns.forEach(function (column) {
+        const th = document.createElement('th');
+        th.className = 'sortable' + getSortClass(column.key);
+        th.textContent = column.label;
+        th.addEventListener('click', function () {
+          updateSkuSort(column.key);
+        });
+        tr.appendChild(th);
+      });
+
+      return tr;
+    }
+
+    /*
+      Agrupa as linhas por SKU + anúncio e calcula Faturamento, GM e GM%.
+    */
+    function buildSkuDetails(filteredRows, marketplaceSaleColumn, skuColumn, adColumn) {
+      const marketplaceSaleIndex = dashboardState.headers.indexOf(marketplaceSaleColumn);
+      const skuIndex = dashboardState.headers.indexOf(skuColumn);
+      const adIndex = dashboardState.headers.indexOf(adColumn);
+      const groups = new Map();
+
+      filteredRows.forEach(function (row) {
+        const marketplaceSale = String(row[marketplaceSaleIndex] || '(vazio)');
+        const sku = String(row[skuIndex] || '(vazio)');
+        const ad = String(row[adIndex] || '(vazio)');
+
+        if (normalizeText(ad) === 'xx') {
+          return;
+        }
+
+        const key = marketplaceSale + '||' + sku + '||' + ad;
+        const current = groups.get(key) || { marketplaceSale, sku, ad, rows: [] };
+
+        current.rows.push(row);
+        groups.set(key, current);
+      });
+
+      return Array.from(groups.values()).map(function (group) {
+        const summary = buildCategorySummary(group.rows);
+        const statement = buildFinancialStatement(summary, group.rows);
+        const revenue = getStatementActual(statement, '13.Faturamento Bruto');
+        const gm = getStatementActual(statement, 'GM');
+        const gmPercent = getStatementActual(statement, 'GM%');
+
+        return {
+          marketplaceSale: group.marketplaceSale,
+          sku: group.sku,
+          ad: group.ad,
+          revenue,
+          gm,
+          gmPercent
+        };
+      }).sort(compareSkuDetails);
+    }
+
+    /*
+      Nova tabela de investimento em publicidade por Marketplace venda + SKU + anÃºncio.
+    */
+    function createAdvertisingDetailsCard(filteredRows) {
+      const marketplaceSaleColumn = findHeader(dashboardState.headers, ['Marketplace venda']);
+      const skuColumn = findHeader(dashboardState.headers, ['SKU']);
+      const adColumn = findHeader(dashboardState.headers, ['Id anÃºncio', 'Id anuncio', 'AnÃºncio', 'Anuncio']);
+      const subcategoryColumn = findHeader(dashboardState.headers, ['Sub Categoria', 'Subcategoria', 'Sub-Categoria']);
+      const card = document.createElement('section');
+      const title = document.createElement('h2');
+      const scroll = document.createElement('div');
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const tbody = document.createElement('tbody');
+
+      card.className = 'dashboard-card sku-table-card';
+      title.textContent = 'Publicidade por Anuncio';
+      scroll.className = 'sku-table-scroll';
+      table.className = 'sku-table advertising-table';
+      thead.appendChild(createAdvertisingTableHeader());
+
+      if (!marketplaceSaleColumn || !skuColumn || !adColumn || !subcategoryColumn) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="7">Colunas Marketplace venda, SKU, Id anÃºncio e Sub Categoria nÃ£o encontradas na base.</td>';
+        tbody.appendChild(tr);
+      } else {
+        const details = buildAdvertisingDetails(filteredRows, marketplaceSaleColumn, skuColumn, adColumn, subcategoryColumn);
+
+        if (!details.length) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td colspan="7">Nenhum investimento em Publicidade encontrado para os filtros atuais.</td>';
+          tbody.appendChild(tr);
+        }
+
+        details.forEach(function (item) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + escapeHtml(item.marketplaceSale) + '</td><td>' + escapeHtml(item.sku) + '</td><td>' + escapeHtml(item.ad) + '</td><td>' + formatCurrency(item.revenue) + '</td><td class="' + getSignedClass(item.gm) + '">' + formatCurrency(item.gm) + '</td><td>' + formatCurrency(item.advertising) + '</td><td class="' + getTacosClass(item.tacos) + '">' + formatPercent(item.tacos) + '</td>';
+          tbody.appendChild(tr);
+        });
+      }
+
+      table.appendChild(thead);
+      table.appendChild(tbody);
+      scroll.appendChild(table);
+      card.appendChild(title);
+      card.appendChild(scroll);
+
+      return card;
+    }
+
+    /*
+      CabeÃ§alho da tabela de publicidade.
+    */
+    function createAdvertisingTableHeader() {
+      const tr = document.createElement('tr');
+      const labels = [
+        'Marketplace de venda',
+        'SKU',
+        'Anuncio',
+        'Faturamento',
+        'GM',
+        'Publicidade',
+        'TACOS'
+      ];
+
+      labels.forEach(function (label) {
+        const th = document.createElement('th');
+
+        th.textContent = label;
+        tr.appendChild(th);
+      });
+
+      return tr;
+    }
+
+    /*
+      Calcula Faturamento, GM, Publicidade e TACOS por anÃºncio.
+    */
+    function buildAdvertisingDetails(filteredRows, marketplaceSaleColumn, skuColumn, adColumn, subcategoryColumn) {
+      const groups = groupRowsByAd(filteredRows, marketplaceSaleColumn, skuColumn, adColumn);
+
+      return Array.from(groups.values()).map(function (group) {
+        const summary = buildCategorySummary(group.rows);
+        const statement = buildFinancialStatement(summary, group.rows);
+        const revenue = getStatementActual(statement, '13.Faturamento Bruto');
+        const gm = getStatementActual(statement, 'GM');
+        const advertising = Math.abs(getSubcategoryActual(group.rows, subcategoryColumn, 'Publicidade'));
+        const tacos = revenue === 0 ? 0 : advertising / revenue;
+
+        return {
+          marketplaceSale: group.marketplaceSale,
+          sku: group.sku,
+          ad: group.ad,
+          revenue,
+          gm,
+          advertising,
+          tacos
+        };
+      }).filter(function (item) {
+        return Math.abs(item.advertising) > 0;
+      }).sort(function (a, b) {
+        return b.advertising - a.advertising;
+      });
+    }
+
+    /*
+      Agrupamento comum por Marketplace venda + SKU + anÃºncio.
+    */
+    function groupRowsByAd(rows, marketplaceSaleColumn, skuColumn, adColumn) {
+      const marketplaceSaleIndex = dashboardState.headers.indexOf(marketplaceSaleColumn);
+      const skuIndex = dashboardState.headers.indexOf(skuColumn);
+      const adIndex = dashboardState.headers.indexOf(adColumn);
+      const groups = new Map();
+
+      rows.forEach(function (row) {
+        const marketplaceSale = String(row[marketplaceSaleIndex] || '(vazio)');
+        const sku = String(row[skuIndex] || '(vazio)');
+        const ad = String(row[adIndex] || '(vazio)');
+
+        if (normalizeText(ad) === 'xx') {
+          return;
+        }
+
+        const key = marketplaceSale + '||' + sku + '||' + ad;
+        const current = groups.get(key) || { marketplaceSale, sku, ad, rows: [] };
+
+        current.rows.push(row);
+        groups.set(key, current);
+      });
+
+      return groups;
+    }
+
+    /*
+      Soma o Actual de uma subcategoria especÃ­fica.
+    */
+    function getSubcategoryActual(rows, subcategoryColumn, subcategoryName) {
+      const summary = buildSummaryByColumn(rows, subcategoryColumn);
+      const lookup = createSummaryLookup(summary);
+      const pair = sumCategoryPair(lookup, [subcategoryName]);
+
+      return pair.actual;
+    }
+
+    /*
+      Ordena a tabela de SKU por uma coluna por vez.
+    */
+    function compareSkuDetails(a, b) {
+      const sort = dashboardState.skuSort;
+      const direction = sort.direction === 'asc' ? 1 : -1;
+      const aValue = a[sort.column];
+      const bValue = b[sort.column];
+
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return (aValue - bValue) * direction;
+      }
+
+      return String(aValue).localeCompare(String(bValue), 'pt-BR') * direction;
+    }
+
+    /*
+      Alterna a ordenação da coluna clicada.
+    */
+    function updateSkuSort(column) {
+      const currentSort = dashboardState.skuSort;
+
+      dashboardState.skuSort = {
+        column,
+        direction: currentSort.column === column && currentSort.direction === 'desc' ? 'asc' : 'desc'
+      };
+
+      renderDashboard();
+    }
+
+    /*
+      Mostra visualmente qual coluna está ordenada.
+    */
+    function getSortClass(column) {
+      if (dashboardState.skuSort.column !== column) {
+        return '';
+      }
+
+      return dashboardState.skuSort.direction === 'asc' ? ' sorted-asc' : ' sorted-desc';
+    }
+
+    /*
+      Busca o valor Actual de uma linha do demonstrativo.
+    */
+    function getStatementActual(statement, name) {
+      const row = findStatementRow(statement, name);
+
+      return row ? row.actual : 0;
+    }
+
+    /*
+      Verde para valores positivos e vermelho para negativos.
+    */
+    function getSignedClass(value) {
+      if (value > 0) {
+        return 'positive-variation';
+      }
+
+      if (value <= 0) {
+        return 'negative-variation';
+      }
+
+      return '';
+    }
+
+    /*
+      Classifica TACOS: ate 3% verde, ate 5% amarelo, acima disso vermelho.
+    */
+    function getTacosClass(value) {
+      if (value <= 0.03) {
+        return 'positive-variation';
+      }
+
+      if (value <= 0.05) {
+        return 'warning-variation';
+      }
+
+      return 'negative-variation';
+    }
+
+    /*
+      Converte valores de moeda/número brasileiros ou internacionais para número.
+      A conversão é usada apenas para somar no dashboard; a tabela original continua intacta.
+    */
+    function parseNumber(value) {
+      const original = String(value || '').trim();
+
+      if (!original) {
+        return null;
+      }
+
+      let text = original
+        .replace(/\s/g, '')
+        .replace(/R\$/gi, '')
+        .replace(/%/g, '');
+
+      const isNegative = text.includes('-') || /^[(].*[)]$/.test(text);
+      text = text.replace(/[()\-]/g, '').replace(/[^0-9,\\.]/g, '');
+
+      if (!text) {
+        return null;
+      }
+
+      const lastComma = text.lastIndexOf(',');
+      const lastDot = text.lastIndexOf('.');
+
+      if (lastComma > lastDot) {
+        text = text.replace(/\./g, '').replace(',', '.');
+      } else if (lastDot > lastComma) {
+        text = text.replace(/,/g, '');
+      } else {
+        text = text.replace(',', '.');
+      }
+
+      const number = Number(text);
+
+      if (Number.isNaN(number)) {
+        return null;
+      }
+
+      return isNegative ? -number : number;
+    }
+
+    /*
+      Formata números do dashboard em padrão brasileiro.
+      A formatação é apenas para os indicadores calculados, não para a base carregada.
+    */
+    function formatNumber(value) {
+      return Number(value).toLocaleString('pt-BR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      });
+    }
+
+    /*
+      Formata valores monetários do dashboard em reais, sem casas decimais.
+    */
+    function formatCurrency(value) {
+      return Number(value).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      });
+    }
+
+    /*
+      Formata percentuais do dashboard sem casas decimais.
+    */
+    function formatPercent(value) {
+      return Number(value).toLocaleString('pt-BR', {
+        style: 'percent',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      });
+    }
+
+    /*
+      Formata uma linha do demonstrativo.
+      Percentuais aparecem como %, e os demais valores aparecem como número brasileiro.
+    */
+    function formatStatementValue(item, field) {
+      const value = item[field];
+
+      if (item.type === 'percent') {
+        return formatPercent(value);
+      }
+
+      if (item.name === '14.Quantidade') {
+        return formatNumber(value);
+      }
+
+      return formatCurrency(value);
+    }
+
+    /*
+      Aplica verde/vermelho somente nas variações das linhas indicadas.
+    */
+    function getVariationClass(item, field) {
+      if (!shouldColorVariation(item.name)) {
+        return '';
+      }
+
+      const value = item[field || 'variation'];
+
+      if (value > 0) {
+        return 'positive-variation';
+      }
+
+      if (value < 0) {
+        return 'negative-variation';
+      }
+
+      return '';
+    }
+
+    /*
+      Lista de linhas que devem receber formatação condicional nas colunas de variação.
+    */
+    function shouldColorVariation(name) {
+      const colorEnabledRows = [
+        '14.Quantidade',
+        '13.Faturamento Bruto',
+        '01.Preço unitário',
+        'Faturamento Liquido',
+        'GM',
+        'GM%'
+      ];
+
+      return colorEnabledRows.some(function (rowName) {
+        return normalizeText(rowName) === normalizeText(name);
+      });
+    }
+
+    /*
+      Ativa a aba escolhida.
+    */
+    function activateTab(panelId) {
+      tabButtons.forEach(function (button) {
+        button.classList.toggle('active', button.dataset.tab === panelId);
+      });
+
+      tabPanels.forEach(function (panel) {
+        panel.classList.toggle('active', panel.id === panelId);
+      });
+    }
+
+    /*
+      Mostra nome do arquivo, quantidade de linhas filtradas e quantidade de colunas.
+      A contagem de linhas considera somente as linhas do ano atual abaixo do cabeçalho.
+    */
+    function renderStats(fileName, originalRows, filteredRows) {
+      const currentYear = new Date().getFullYear();
+      const rowCount = Math.max(filteredRows.length - 1, 0);
+      const originalRowCount = Math.max(originalRows.length - 1, 0);
+      const columnCount = getColumnCount(filteredRows);
+
+      statusBox.innerHTML = `
+        <span class="stat"><strong>Arquivo:</strong> ${escapeHtml(fileName)}</span>
+        <span class="stat"><strong>Ano:</strong> ${currentYear}</span>
+        <span class="stat"><strong>Linhas exibidas:</strong> ${rowCount}</span>
+        <span class="stat"><strong>Linhas no arquivo:</strong> ${originalRowCount}</span>
+        <span class="stat"><strong>Colunas:</strong> ${columnCount}</span>
+      `;
+    }
+
+    /*
+      Mostra mensagens de erro claras para o usuário.
+    */
+    function showError(message) {
+      statusBox.innerHTML = '';
+      statusMessage.textContent = message;
+      statusMessage.className = 'status-message error';
+      statusBox.appendChild(statusMessage);
+      tableContainer.innerHTML = '<div class="empty-table">Nenhuma base carregada ainda.</div>';
+      dashboardContainer.innerHTML = '<div class="empty-table">Carregue uma base para visualizar o dashboard.</div>';
+    }
+
+    /*
+      Remove o visual de erro antes de tentar ler outro arquivo.
+    */
+    function clearError() {
+      statusMessage.className = 'status-message';
+    }
+
+    /*
+      Protege o HTML usado nas estatísticas.
+      Os dados da tabela são inseridos com textContent, então já ficam seguros por padrão.
+    */
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+  </script>
+</body>
+</html>
